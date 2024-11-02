@@ -1,0 +1,551 @@
+
+      
+
+proc sql;
+create table cohort_vital as select a.*,b.cohort1n,b.cohort, b.cohortn,b.death_date, b.index_date
+from b1.vital_sign a left join b1.cohortdata b on a.patient_id=b.patient_id where a.patient_id in (select
+patient_id from b1.cohortdata) and .z <index_date-30 < vital_date AND loinc
+in ('8462-4', '8480-6', '8867-4') order by  patient_id, loinc, vital_date;
+quit;
+
+    
+      
+
+/*Creating base variable by selecting records falls in -30 Days Before and 30 days After
+of Index Date of AF*/
+data base;
+set cohort_vital;
+where index_date-30<vital_date<index_Date+30 and value NE .;
+rename value=base;
+by patient_id loinc vital_date;
+run;
+
+
+      
+
+/*Creating date variable by selecting records falls Records .z <index_date-30 < vital_date*/
+data date;
+set base;
+where .z <index_date-30 < vital_date and base NE .;
+by  patient_id loinc vital_date;
+run;
+
+
+      
+
+/*selecting loinc closer to Index Date will be selected.*/
+data base_value;
+set date;
+by patient_id loinc vital_date;
+if last.loinc;
+Run;
+
+      
+
+/*creating postbase by selecting record after Index Date and value NE . */
+data postbase;
+set cohort_vital;
+where .z<index_date<vital_date and value NE .;
+by patient_id loinc vital_date;
+Run;
+
+
+
+/*creating postbase by selecting record Before Death Date and death_date NE . */
+data pb;
+set postbase;
+if death_date ne . and vital_date>death_date>.z then delete;
+death_date=.;
+by patient_id loinc vital_date;
+rename value=postbase;
+if last.loinc;
+Run;
+
+
+
+/*creating CHG */
+Data b1.vitalanalysis(keep=Base chg cohort1n loinc patient_id postbase vital_date death_date);
+merge base_value(in=x) pb(in=b);
+by patient_id Loinc;
+chg=postbase-base;
+run;
+
+     
+
+proc compare base=b2.vital_sign_analysis compare=b1.vitalanalysis out=COMPARE;
+run;
+
+
+
+       
+
+
+data vital1;
+set b1.vitalanalysis;
+where loinc='8867-4';
+run;
+
+
+
+      
+ods output ttests=Ttest statistics=summarys;
+
+
+proc ttest data=vital1;
+class cohort1n;
+var chg;
+run;
+
+
+      
+/*statistics*/
+data statistics;
+length means$20. ci$20. min_max$20.;
+set summarys;
+Means=put(mean, 5.2)||'('||put(stdErr, 6.2)||')';
+CI='('||put(LowerCLmean, 7.2)||','||put(UpperCLmean, 7.2)||')';
+min_max='('||put(Minimum, 5.1)||','||put(Maximum, 5.1)||')';
+if method ne '' then delete;
+keep Means CI min_max variable class;
+run;
+
+    
+
+proc transpose data=statistics out=stat_transpose;
+by variable;
+var means ci min_max;
+id class;
+
+
+data stat2;
+set stat_transpose;
+rename _name_=var '1'n=NOAC '2'n='Aspirin+Warfarin'n;
+arrange=1;
+       	
+
+
+proc sort data=stat2;
+by var arrange;
+
+
+/*Ttest p value*/
+data test;
+length var$40. pvalue$15;
+set ttest;
+where variances='Equal';
+var='Ttest P-Value';
+pvalue=put(probt, 6.4);
+arrange=4;
+KEEP variable pvalue var arrange;
+run;
+
+
+      
+
+proc transpose data=test out=test1;
+by variable;
+var pvalue;
+by var arrange;
+run;
+
+
+     
+data test2;
+set test1;
+rename COL1=NOAC;
+run;
+
+      
+proc sort data=stat2;
+by var arrange;
+        	
+
+data heart;
+Length name$40. event$40. var $40.;
+set stat2 test2;
+by arrange;
+if var='means' then do;
+name='Mean (SE)';
+arrange=1;
+event='Heart rate';
+end;
+else if var='ci' then do;
+name='95% CI';
+arrange=2;
+end;
+else if var='min_max' then do;
+name='Min, Max';
+arrange=3;
+end;
+else if var='Ttest P-' then	do;
+name='Ttest P Value';
+arrange=4;
+end;
+orde=1;
+run;
+
+
+
+proc sort data=heart;
+by orde arrange var;
+RUN;
+
+
+data vital1;
+set b1.vitalanalysis;
+where loinc='8480-6';
+run;
+
+
+ods output ttests=Ttest statistics=summarys;
+
+proc ttest data=vital1;
+class cohort1n;
+var chg;
+run;
+
+
+/*statistics*/
+
+data statistics;
+length means$20. ci$20. min_max$20.;
+set summarys;
+Means=put(mean, 5.2)||'('||put(stdErr, 6.2)||')';
+CI='('||put(LowerCLmean, 7.2)||','||put(UpperCLmean, 7.2)||')';
+min_max='('||put(Minimum, 5.1)||','||put(Maximum, 5.1)||')';
+if method ne '' then delete;
+keep Means CI min_max variable class;
+run;
+
+         	
+proc transpose data=statistics out=stat_transpose;
+by variable;
+var means ci min_max;
+id class;
+
+      
+
+data stat2;
+set stat_transpose;
+rename _name_=var '1'n=NOAC '2'n='Aspirin+Warfarin'n;
+arrange=1;
+
+proc sort data=stat2;
+by var arrange;
+
+
+/*Ttest p value*/
+
+data test;
+length var$40. pvalue$15.;
+set ttest;
+where variances='Equal';
+var='Ttest P-Value';
+pvalue=put(probt, 6.4);
+arrange=4;
+KEEP variable pvalue var arrange;
+run;
+
+
+proc transpose data=test out=test1;
+by variable;
+var pvalue;
+by var arrange;
+run;
+
+
+data test2;
+set test1;
+rename COL1=NOAC;
+run;
+
+
+proc sort data=stat2;
+by var arrange;
+
+
+
+data sysbp;
+Length name$40. event$40. var$40.;
+set stat2 test2;
+by arrange;
+if var='means' then do;
+name='Mean (SE)';
+arrange=1;
+event='Systolic blood pressure';
+end;
+else if var='ci' then do;
+name='95% CI';
+arrange=2;
+end;
+else if var='min_max' then do;
+name='Min, Max';
+arrange=3;
+end;
+else if var='Ttest P-' then do;
+name='Ttest P Value';
+arrange=4;
+end;
+orde=2;
+run;
+
+
+
+proc sort data=sysbp;
+by orde arrange var;
+RUN;
+
+
+data vital1;
+set b1.vitalanalysis;
+where loinc='8462-4';
+run;
+
+
+ 
+      
+
+ods output ttests=Ttest statistics=summarys;
+proc ttest data=vital1;
+class cohort1n;
+var chg;
+run;
+
+
+/*statistics*/
+
+data statistics;
+length means$20. ci$20. min_max$20.;
+set summarys;
+Means=put(mean, 5.2)||'('||put(stdErr, 6.2)||')';
+CI='('||put(LowerCLmean, 7.2)||','||put(UpperCLmean, 7.2)||')';
+min_max='('||put(Minimum, 5.1)||','||put(Maximum, 5.1)||')';
+if method ne '' then delete;
+keep Means CI min_max variable class;
+run;
+
+
+proc transpose data=statistics out=stat_transpose;
+by variable;
+var means ci min_max;
+id class;
+       	
+
+data stat2;
+set stat_transpose;
+rename _name_=var '1'n=NOAC '2'n='Aspirin+Warfarin'n;
+arrange=1;
+       	
+
+proc sort data=stat2;
+by var arrange;
+
+
+/*Ttest p value*/     
+data test;
+length var$40. pvalue$15.;
+set ttest;
+where variances='Equal';
+var='Ttest P-Value';
+pvalue=put(probt, 6.4);
+arrange=4;
+KEEP variable pvalue var arrange;
+run;
+      
+
+proc transpose data=test out=test1;
+by variable;
+var pvalue;
+by var arrange;
+run;
+    
+
+data test2;
+set test1;
+rename COL1=NOAC;
+	run;
+
+
+proc sort data=stat2;
+by var arrange;
+        	
+
+
+data diabp;
+Length name$40. event$40. var$40.;
+set stat2 test2;
+by arrange;
+if var='means' then do;
+name='Mean (SE)';
+arrange=1;
+event='Diastolic blood pressure';
+end;
+else if var='ci' then do;
+name='95% CI';
+arrange=2;
+end;
+else if var='min_max' then do;
+name='Min, Max';
+arrange=3;
+end;
+else if var='Ttest P-' then	do;
+name='Ttest P Value';
+arrange=4;
+end;
+orde=3;
+run;
+
+
+proc sort data=diabp;
+by orde arrange var;
+RUN;
+
+     
+data cv_vital;
+set heart sysbp diabp;
+by orde arrange var;
+run;
+
+
+proc report data=cv_vital headline headskip split='|' missing spacing=1 wrap
+style(header)={just=c} style(report)=[rules=group frame=hsides];
+column (orde arrange event name NOAC 'Aspirin+Warfarin'n);
+define orde/ order noprint;
+define arrange/ order noprint;
+define event / Group 'Parameters' Style(column)=[just=l]
+style(header)=[just=c];
+define name / group 'Statistics ' Style(column)=[just=l]
+style(header)=[just=c];
+define NOAC/ group 'NOAC| (N=194)' style(column)=[just=c]
+style(header)=[just=c];
+define 'Aspirin+Warfarin'n/ group 'Aspirin+Warfarin| (N=88)'
+style(column)=[just=c] style(header)=[just=c];
+break after orde/skip;
+compute before orde;
+line ' ';
+endcomp;
+run;
+
+
+title;
+ods pdf close;
+run;
+
+
+/* 
+(^-^)
+proc printto log='/home/u63421075/HEOR/PROJ2/summarychange_cv_vitals.pdf'; 
+
+(^-^)
+
+*/
+
+%macro vitals(loinc, output, label, orde);
+
+data vital1;
+set b1.vitalanalysis;
+where loinc='8462-4';
+run;
+
+
+ods output ttests=Ttest statistics=summarys;
+
+proc ttest data=vital1;
+class cohort1n;
+var chg;
+run;
+
+
+ /*statistics*/
+data statistics;
+length means$20. ci$20. min_max$20.;
+set summarys;
+Means=put(mean, 5.2)||'('||put(stdErr, 6.2)||')';
+CI='('||put(LowerCLmean, 7.2)||','||put(UpperCLmean, 7.2)||')';
+min_max='('||put(Minimum, 5.1)||','||put(Maximum, 5.1)||')';
+if method ne '' then delete;
+keep Means CI min_max variable class;
+run;
+
+
+proc transpose data=statistics out=stat_transpose;
+by variable;
+var means ci min_max;
+id class;
+
+
+data stat2;
+set stat_transpose;
+rename _name_=var '1'n=NOAC '2'n='Aspirin+Warfarin'n;
+arrange=1;
+
+
+proc sort data=stat2;
+by var arrange;
+
+
+/*Ttest p value*/
+data test;
+length var$40. pvalue$15.;
+set ttest;
+where variances='Equal';
+var='Ttest P-Value';
+pvalue=put(probt, 6.4);
+arrange=4;
+KEEP variable pvalue var arrange;
+run;
+
+
+proc transpose data=test out=test1;
+by variable;
+var pvalue;
+by var arrange;
+
+
+run;
+
+
+data test2;
+set test1;
+rename COL1=NOAC;
+run;
+
+proc sort data=stat2;
+by var arrange;
+
+
+data diabp;
+Length name$40. event$40. var$40.;
+set stat2 test2;
+by arrange;
+if var='means' then do;
+name='Mean (SE)';
+arrange=1;
+event='Diastolic blood pressure';
+end;
+else if var='ci' then do;
+name='95% CI';
+arrange=2;
+end;
+else if var='min_max' then do;
+name='Min, Max';
+arrange=3;
+end;
+else if var='Ttest P-' then do;
+name='Ttest P Value';
+arrange=4;
+end;
+orde=3;
+run;
+
+
+proc sort data=diabp;
+by orde arrange var;
+RUN;
+%mend;
+
+%vitals(loinc=8867-4, output=heart, label='Heart Rate', orde=1);
+
+
+      
+/* (^-^) */
