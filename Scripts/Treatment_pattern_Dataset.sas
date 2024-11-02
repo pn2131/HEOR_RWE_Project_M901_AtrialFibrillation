@@ -1,4 +1,3 @@
-
 Proc sql;
 create table medication_category as select * from b1.medication as a 
 where patient_id 
