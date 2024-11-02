@@ -265,6 +265,7 @@ libname b2 "/home/u62744457/Task B/B2";
  proc compare base=b2.cohort compare=b1.cohortdata out=COMPARE;
 run;
 
+
 **************************************;
 
 /* proc contents data = b2.cohort; */
