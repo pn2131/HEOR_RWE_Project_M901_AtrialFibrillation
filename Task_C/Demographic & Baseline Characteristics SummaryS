@@ -1,0 +1,849 @@
+data reorganize;
+length cha$20.;
+set b1.cohortdata;                 
+if cha2ds2 LE 2 then
+cha='0-2';
+else if cha2ds2=3 then
+cha='3';
+else if cha2ds2=4 then
+cha='4';
+else if cha2ds2>=5 then
+cha='>=5'; 
+if hasbled LE 2 then
+hads='<=2';
+if hasbled GE 3 then
+hads='>=3';
+if year=2020 then
+years='2020';
+if year=2019 then
+years='2019';
+if year=2018 then
+years='2018';
+run;
+
+
+      
+/*Duplicated the observations to  estimate the totals*/
+data total;
+set reorganize;
+output;
+cohort='Total';
+output;
+run;
+
+
+      
+/*Categorize cohort to the three drug varients*/
+Data cohort_code;
+set total;
+length cohort_cat $9.;
+if cohort in ('Aspirin') then
+do;
+cohort_cat='Aspirin';
+Cohort_code=1;
+end;
+If cohort in ('Warfarin') then
+do;
+cohort_cat='Warfarin';
+Cohort_code=2;
+end;
+If cohort in ('NOAC') then
+do;
+cohort_cat='NOAC';
+Cohort_code=3;
+END;
+If cohort in ('Total') then
+do;
+cohort_cat='Total';
+Cohort_code=4;
+end;
+run;
+
+
+/*Estimated the count of patients taking each drug*/
+   
+proc sql;
+select count(distinct patient_id) into :code1 - :code4 
+from cohort_code 
+group by cohort_code order by cohort_code;
+quit;
+
+
+%put &code1. &code2. &code3. &code4.;
+
+       
+/*Creating a table for the count of patients taking each drugg under each
+subCategory-frequency,categorizing the variable,transposed them and calculated theor percentage*/
+proc freq data=cohort_code;
+table gender*cohort_cat/ out=sex;
+run;
+
+
+
+data gender;
+set sex;
+length var$9.;
+if gender='Male' then
+do;
+var='Male';
+orde=1;
+end;
+if gender='Female' then
+do;
+var='Female';
+orde=2;
+end;
+run;
+
+
+     
+proc sort data=gender;
+by orde var;
+run;
+
+
+proc transpose data=gender out=gender1;
+by orde var;
+id cohort_cat;
+var count;
+run;
+
+  
+/*race*/
+proc freq data=cohort_code;
+table race*cohort_cat/ out=race1;
+run;
+
+
+data Race2;
+set race1;
+length var$81.;
+if race='White' then
+do;
+var='White';
+orde=1;
+end;
+if race='Black Or African American' then
+do;
+var='Black Or African American';
+orde=2;
+end; 
+if race='Asian' then
+do;
+var='Asian';
+orde=3;
+end;   
+if race='American Indian Or Alaska Native' then
+do;
+var='American Indian Or Alaska Native';
+orde=4;
+end;     
+if race='Native Hawaiian Or Other Pacific Islander' then
+do;
+var='Native Hawaiian Or Other Pacific Islander';
+orde=5;
+end; 
+if race='Other Race' then
+do;
+var='Other Race';
+orde=6;
+end;
+if race='Unknown' then
+do;
+var='Unknown';
+orde=7;
+end;
+run;
+
+
+ proc sort data=race2;
+by orde var;
+run;
+
+
+proc transpose data=race2 out=race12;
+by orde var;
+id cohort_cat;
+var count;
+run;
+
+   
+
+%macro percent(output, input);
+
+
+data &output(drop=Aspirin Warfarin NOAC Total _NAME_ _LABEL_);
+set &input;
+length Aspirin1$12. Warfarin1$12. NOAC1$12. Total1$12.;
+if aspirin=. then
+aspirin1='0||(0)';
+else
+aspirin1=put(aspirin, 3.)||'('||put(Aspirin/&code1*100, 4.1)||')';
+if Warfarin=. then
+Warfarin1='0||(0)';
+else
+Warfarin1=put(Warfarin, 3.)||'('||put(Warfarin/&code2*100, 4.1)||')';
+if NOAC=. then
+NOAC1='0||(0)';
+else
+NOAC1=put(NOAC, 3.)||'('||put(NOAC/&code3*100, 4.1)||')';
+if Total=. then
+Total1='0||(0)';
+else
+Total1=put(Total, 3.)||'('||put(Total/&code4*100, 4.1)||')';
+run;
+%mend;
+%percent (Genderr, gender1);
+
+
+
+%percent (Racess, race12);
+
+     
+/*CHA2DS2*/
+proc freq data=cohort_code;
+table cha*cohort_cat/ out=cha2 NOROW NOCOL;
+run;
+
+
+       
+data cha3;
+set cha2;
+if cha='0-2' then
+do;
+var='0-2';
+orde=1;
+end;   
+if cha='3' then
+do;
+var='3';
+orde=2;
+end;
+if cha='4' then
+do;
+var='4';
+orde=3;
+end;     
+if cha='>=5' then
+do;
+var='>=5';
+orde=4;
+end;
+run;
+
+
+proc sort data=cha3;
+by orde var ;
+run;
+
+
+proc transpose data=cha3 out=cha4;
+by orde var;
+id cohort_cat;
+var count;
+run;
+
+
+data CHA5(drop=Aspirin Warfarin NOAC Total _NAME_ _LABEL_);
+set cha4;
+length Aspirin1$12. Warfarin1$12. NOAC1$12. Total1$12.;
+if aspirin=. then
+aspirin1='0||(0)';
+else
+aspirin1=put(aspirin, 3.)||'('||put(Aspirin/&code1*100, 4.1)||')';
+if Warfarin=. then
+Warfarin1='0||(0)';
+else
+Warfarin1=put(Warfarin, 3.)||'('||put(Warfarin/&code2*100, 4.1)||')';
+if NOAC=. then
+NOAC1='0||(0)';
+else
+NOAC1=put(NOAC, 3.)||'('||put(NOAC/&code3*100, 4.1)||')';
+if Total=. then
+Total1='0||(0)';
+else
+Total1=put(Total, 3.)||'('||put(Total/&code4*100, 4.1)||')';
+run;
+      
+
+data CHA6(drop=Aspirin1 Warfarin1 NOAC1 Total1);
+length var $20. Aspirin $10. Warfarin $10. NOAC $10. Total $10.;
+set CHA5;
+Aspirin = Aspirin1;
+Warfarin = Warfarin1;
+NOAC = NOAC1;
+Total = Total1;
+arrange = 5;
+run;
+
+      
+
+/*hasbled*/
+proc freq data=cohort_code;
+table hads*cohort_cat/ out=hads1 NOROW NOCOL;
+run;
+      
+
+data hads;
+set hads1;    
+if hads='<=2' then
+do;
+var='0-2';
+orde=1;
+end;
+if hads='>=3' then
+do;
+var='>=3';
+orde=2;
+end;
+run;
+
+
+proc sort data=hads;
+by orde var;
+run;
+      
+
+proc transpose data=hads out=hasbled1;
+by orde var;
+id cohort_cat;
+var count;
+run;
+
+      
+
+data hasbled11(drop=Aspirin Warfarin NOAC Total _NAME_ _LABEL_);
+set hasbled1;
+ 
+length Aspirin1$12. Warfarin1$12. NOAC1$12. Total1$12.;
+     
+if aspirin=. then
+aspirin1='0||(0)';
+else
+aspirin1=put(aspirin, 3.)||'('||put(Aspirin/&code1*100, 4.1)||')';
+
+if Warfarin=. then
+Warfarin1='0||(0)';
+else
+Warfarin1=put(Warfarin, 3.)||'('||put(Warfarin/&code2*100, 4.1)||')';
+
+if NOAC=. then
+NOAC1='0||(0)';
+else
+NOAC1=put(NOAC, 3.)||'('||put(NOAC/&code3*100, 4.1)||')';
+
+if Total=. then
+Total1='0||(0)';
+else
+Total1=put(Total, 3.)||'('||put(Total/&code4*100, 4.1)||')';
+run;
+
+
+       
+ /*years*/
+proc freq data=cohort_code;
+table years*cohort_cat/ out=years1 NOROW NOCOL;
+run;
+
+
+data Years2;
+set years1;
+ 
+if years='2020' then
+do;
+var='2020';
+orde=1;
+end;
+
+if years='2019' then
+do;
+var='2019';
+orde=2;
+end;
+
+if years='2018' then
+do;
+var='2018';
+orde=3;
+end;
+run;
+
+
+      
+proc sort data=years2;
+by orde var;
+run;
+
+
+      
+proc transpose data=years2 out=yearly;
+by orde var;
+id cohort_cat;
+var count;
+run;
+
+
+            
+data Year_s(drop=Aspirin Warfarin NOAC Total _NAME_ _LABEL_);
+set yearly;
+length Aspirin1$12. Warfarin1$12. NOAC1$12. Total1$12.;
+
+if aspirin=. then
+aspirin1='0||(0)';
+else
+aspirin1=put(aspirin, 3.)||'('||put(Aspirin/&code1*100, 4.1)||')';
+
+if Warfarin=. then
+Warfarin1='0||(0)';
+else
+Warfarin1=put(Warfarin, 3.)||'('||put(Warfarin/&code2*100, 4.1)||')';
+
+
+   
+if NOAC=. then
+NOAC1='0||(0)';
+else
+NOAC1=put(NOAC, 3.)||'('||put(NOAC/&code3*100, 4.1)||')';
+
+if Total=. then
+Total1='0||(0)';
+else
+Total1=put(Total, 3.)||'('||put(Total/&code4*100, 4.1)||')';
+run;
+
+
+      
+
+ /*agecat*/
+proc freq data=cohort_code;
+table agecat*cohort_cat/ out=agecat1 NOROW NOCOL;
+run;
+
+
+
+data agecat2;
+length var$12.;
+set agecat1;
+
+if agecat='<65' then
+do;
+var='<65';
+orde=1;
+end;
+      
+if agecat='65=< to 75' then
+do;
+var='65=< to 75';
+orde=2;
+end;
+
+if agecat='75<' then
+do;
+var='75<';
+orde=3;
+end;
+run;
+
+
+proc sort data=agecat2;
+by orde var;
+run;
+
+
+proc transpose data=agecat2 out=age_cat;
+by orde var;
+id cohort_cat;
+var count;
+run;
+
+
+      
+data age_cat1(drop=Aspirin Warfarin NOAC Total _LABEL_);       
+set age_cat;
+length Aspirin1$12. Warfarin1$12. NOAC1$12. Total1$12.;
+
+if aspirin=. then
+aspirin1='0||(0)';
+else
+aspirin1=put(aspirin, 3.)||'('||put(Aspirin/&code1*100, 4.1)||')';      
+if Warfarin=. then
+Warfarin1='0||(0)';
+else
+Warfarin1=put(Warfarin, 3.)||'('||put(Warfarin/&code2*100, 4.1)||')';   
+if NOAC=. then
+NOAC1='0||(0)';
+else
+NOAC1=put(NOAC, 3.)||'('||put(NOAC/&code3*100, 4.1)||')';    
+if Total=. then
+Total1='0||(0)';
+else
+Total1=put(Total, 3.)||'('||put(Total/&code4*100, 4.1)||')';
+run;
+
+
+%macro convert(output, input);
+
+data &output(drop=Aspirin1 Warfarin1 NOAC1 Total1);
+length var$90. Aspirin$10. Warfarin$10. NOAC$10. Total$10.;
+set &input;
+Aspirin=Aspirin1;
+Warfarin=Warfarin1;
+NOAC=NOAC1;
+Total=Total1;
+run;
+%mend;
+%convert(Gender2, genderr);
+%convert(race,racess);
+%convert(hadSCORE,hasbled11);
+%convert(yearss1,year_s);
+%convert(ageing1,age_cat1);
+
+
+/*chad*/
+proc sort data=cohort_code;
+by cohort_code;
+run;
+
+
+proc means data=cohort_code mean stddev maxdec=1;
+var cha2ds2;
+class cohort_cat;
+output out=mean_chad mean=Mean_cha StdDev=Stddev_cha / autoname;
+run;
+
+*************************************
+*****************************************;
+/* Verify and Pre-process Data */
+proc freq data=mean_chad;
+    tables cohort_cat / missing;
+run;
+
+data mean_chad_cleaned;
+ length cohort_cat $10; /* Setting the length of cohort_cat as the first operation */
+    set mean_chad;
+    /* Handling missing cohort_cat values by filtering them out */
+    if cohort_cat ne '';
+run;
+
+
+*****************************
+*****************************;
+/* Set a consistent length for var and mean_std variables */
+data cha7;
+      length mean_std $10. cohort_cat $10.; /* Explicitly specifying lengths */
+     set mean_chad_cleaned;
+   mean_std = put(mean_cha, 4.2) || '(' || put(stddev_cha, 4.2) || ')';
+run;
+
+proc transpose data=cha7 out=cha8;
+    id cohort_cat;
+    var Mean_STD;
+run;
+
+data sumCHA(drop=_name_);
+    length var $20. Aspirin $10. Warfarin $10. NOAC $10. Total $10.;
+    set cha8;
+    var = 'Mean (SD)';
+run;
+
+
+        
+/*hads*/
+proc sort data=cohort_code;
+by cohort_code;
+run;
+
+
+       
+proc means data=cohort_code mean stddev maxdec=1;
+var hasbled;
+class cohort_cat;
+output out=mean_hads mean=Mean_had StdDev=Stddev_had / autoname;
+run;
+
+
+             
+data hads2;
+    length mean_sd $10.;
+    set mean_hads;
+    mean_std = put(mean_had, 4.2) || '(' || put(stddev_had, 4.2) || ')';
+run;
+
+/* Cleaning Data: We create a new dataset hads2_clean that includes only the rows with non-missing cohort_cat values.
+ */
+data hads2_clean;
+    set hads2;
+    if not missing(cohort_cat);
+run;
+
+
+/* The PROC TRANSPOSE command is run on the cleaned dataset to avoid warnings and ensure all observations are correctly transposed. */;
+proc transpose data=hads2_clean out=mean_hads2;
+    id cohort_cat;
+    var Mean_std;
+run;
+
+data sumhad;
+    length var $10. Aspirin $10. Warfarin $10. NOAC $10. Total $10.;
+    set mean_hads2;
+    var = _name_;
+    If var = 'mean_std' then do;
+        var = 'Mean (STD)';
+    end;
+    drop _name_;
+run;
+
+
+
+data gename;
+length var$70.;
+var='Gender%';
+run;
+
+
+      
+data genn;
+set gename gender2;
+arrange=2;   	
+if _n_ > 1 then var = '^_^_^_^_^_^_^_^' || var;
+run;
+
+
+      
+data racname;
+length var$90.;
+var='Race%';
+run;
+
+      
+data race_name;
+set racname race;
+arrange=3;
+if _n_ > 1 then var = '^_^_^_^_^_^_^_^' || var;
+run;
+      
+
+data score;
+length var$70.;
+var='CHA2DS2-VASC Score';
+run;
+
+
+data CHADSfinal;
+set score sumcha ;
+arrange=4;
+if _n_ > 1 then var = '^_^_^_^_^_^_^_^' || var;
+run;
+
+
+      
+data hasbled;
+length var$70.;
+var='HAS-BLED Score';
+run;
+
+
+           
+data hadsbl;
+set hasbled sumhad;
+run;
+
+
+          
+data HADS;
+set hadsbl hadSCORE;     
+arrange=6;     	
+if _n_ > 1 then var = '^_^_^_^_^_^_^_^' || var;
+run;
+
+
+      
+
+data agecats;
+length var$70.;
+var='Age Categorization(%)';
+run;
+
+     
+
+data agecategorization;
+length var$70.;
+set agecats ageing1;
+arrange=7;     	
+if _n_ > 1 then var = '^_^_^_^_^_^_^_^' || var;
+run;
+
+        
+data yearss_1;
+length var$70.;
+var='Year of Diagnosis of AF';
+run;
+
+     
+
+data Yearsly;
+set yearss_1 yearss1;
+arrange=8;       	
+if _n_ > 1 then var = '^_^_^_^_^_^_^_^' || var;
+run;
+
+
+      
+       
+Data demography;
+set genn race_name CHADSfinal HADS agecategorization Yearsly;
+run;
+
+      
+
+       
+proc print data=demography;
+run;
+
+
+
+      
+
+ /*mean of age and cha2ds2 and hasbled*/
+proc sort data=cohort_code;
+by cohort_cat;
+run;
+
+
+        
+proc means data=cohort_code mean n min max median stddev maxdec=1;
+var age;
+by cohort_cat;
+output out=mean_age mean=Mean_age N=N_age Min=Min_age Max=Max_age
+Median=Median_age StdDev=Stddev_age / autoname;
+run;
+
+
+      
+data means(drop=Mean_age Median_age n_age Min_age Max_age Stddev_age);
+length Min_max$5.;
+set mean_age;
+n=compress(put(N_age, 4.));
+Mean=compress(put(Mean_age, 4.));
+Median=compress(put(Median_age, 4.));
+Min_max=compress(put(min_age, 2.)||','||put(max_age, 2.));
+Stddev=compress(put(stddev_age, 4.));
+run;
+    
+
+     
+proc transpose data=means out=mean_ages;
+id cohort_cat;
+var n Mean Median Min_max Stddev;
+run;
+
+       
+data sumage(drop=n _name_);
+length var$20. Aspirin$10. Warfarin$10. NOAC$10. Total$10.;
+set Mean_ages;
+var=_name_;
+      
+if var='n' then
+do;
+var='N';
+orde=2;
+end;      
+if Var='Mean' then
+do;
+var='Mean';
+orde=3;
+end;
+if var='Median' then
+do;
+var='Median';
+orde=4;
+end;      
+if Var='Min_max' then
+do;
+var='Min,Max';
+orde=5;
+end;       
+if Var='Stddev' then
+do;
+var='Standard Deviation';
+orde=6;
+end;
+run;
+
+
+           
+data Age;
+length var$70.;
+var='Age';
+orde=1;
+run;
+
+
+data ageing;
+set Age sumage;
+arrange = 1;
+if _n_ > 1 then var = '^_^_^_^_^_^_^_^' || var;
+run;
+
+
+      
+
+data demoni;
+length var$95.;
+set  ageing genn race_name CHADSfinal cha6 hads agecategorization Yearsly;
+run;
+
+
+Data demography;
+set  ageing genn race_name CHADSfinal cha6 HADS agecategorization Yearsly;
+run;
+
+
+        
+proc sort data=demography;by arrange orde;
+
+title 'Demographic and Baseline Characteristics Summary';
+
+Title2 'Atrial Patients received Aspirin, Warfarin, and NOAC';
+
+
+
+ods pdf file='/home/u62744457/Task C/demo.pdf' style=journal;
+
+
+
+
+ods escapechar='^';
+options nodate;
+
+      
+
+proc report data=demography headline headskip split='|' missing spacing=1 wrap style(header)={just=c}
+style(report)=[rules=group frame=hsides];
+column (arrange orde var Aspirin Warfarin NOAC Total);
+define arrange/ order noprint;
+define orde / order noprint;
+define var / group ' ' Style(column)=[just=l] style(header)=[just=c];
+define Aspirin/ group 'Aspirin| (N=60)' style(column)=[just=c] style(header)=[just=c];
+define Warfarin/ group 'Warfarin| (N=28)' style(column)=[just=c] style(header)=[just=c];
+define NOAC/ group 'NOAC| (N=194)' style(column)=[just=c] style(header)=[just=c];
+define Total/ group 'Total| (N=282)' style(column)=[just=c] style(header)=[just=c];
+break after arrange/skip;
+break after orde/skip;
+     
+compute before arrange;
+line ' ';
+endcomp;
+run;
+
+
+      
+title;
+ods pdf close;
+Run;
+
+
+
+
+
+
