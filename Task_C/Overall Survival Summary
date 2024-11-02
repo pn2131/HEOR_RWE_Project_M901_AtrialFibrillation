@@ -1,0 +1,209 @@
+Data cohort_os;
+set b1.os;
+length cat1 $10.;
+If cohort in ('NOAC') then
+do;			
+cat1='NOAC';
+ode=1;
+END;
+If cohort in ('Warfarin') then
+do;			
+cat1='Warfarin';
+ode=2;
+end;
+if cohort in ('Aspirin') then
+do;			
+cat1='Aspirin';
+ode=3;
+end;       
+run;
+
+
+proc sql;
+select count(distinct patient_id) into :code1, :code2, :code3 
+from cohort_os 
+group by ode 
+order by ode;
+quit;
+
+      
+
+proc freq data=cohort_os ;
+table ode/ out=OS1 NOCOL NOROW NOPERCENt nocum;
+
+
+proc freq data=cohort_os;
+table ode*CNSR/ out=OSCNSR NOCOL NOROW NOPERCENT;
+        
+      
+
+data combined_cnsr;
+length category$80.;
+set os1(in=a) oscnsr(in=b);
+if a then do;
+category='Number of subjects';
+arrange=1;
+class=1;end;
+if b then do;
+if cnsr=0 then do;category='^_^_^_^_^_^_'||'Number of subjects with an events (%)';
+arrange=2;
+class=2;end;
+if cnsr=1 then do;category='^_^_^_^_^_^_'||'Number of subjects without an events(%)';
+arrange=3;
+class=2;
+end;
+end;
+run;
+
+
+      
+
+data percent_cnsr;
+length value$20.;
+set combined_cnsr;
+if cnsr=. then value=count;
+if cnsr ne . then value=put(count,3.)||'('||put(percent,4.2)||'%'||')';
+run;
+
+
+proc sort data=percent_cnsr;by category class arrange;
+
+
+proc transpose data=percent_cnsr out=os_transpose;
+by category arrange ;
+id ode;
+var value;run;
+
+
+      
+Data Blocks1(drop=  _name_);
+set os_transpose;
+rename '1'n=NOAC '2'n=Warfarin '3'n=Aspirin Category=Var;
+class=1;
+run;
+
+
+/*second part*/
+proc sort data=cohort_os;
+by ode;
+run;
+
+ods trace on;
+ods output
+Quartiles=Quartiles1;
+proc lifetest data=cohort_os  alpha=0.05 outsurv=outsurv1;
+time AVAL*cnsr(1);
+Strata ode;
+run;
+      
+
+ods trace off;
+data CI;
+length ci$20.;
+set Quartiles1;
+CI='('||put(Upperlimit,5.2)||','||put(lowerlimit,5.2)||')';
+run;
+
+
+data q25(keep= Count25 ode arrange) q50(keep= Median ode arrange)
+q75(keep= Count75 ode arrange) CI95(keep= CI ode arrange);
+set CI;
+length count25$7.4 count75$7.4 Median$7.4;
+IF percent=25 then do; count25=put(estimate,5.2);arrange=3;output q25;end;
+IF percent=50 then do; Median=put(estimate,5.2);arrange=1;output q50;end;
+IF percent=75 then do; count75=put(estimate,5.2);arrange=3;output q75;end;
+if percent=50 and CI ne '' then do; arrange=2;output CI95;end;
+run;
+
+
+Proc sort data=q25;by ode arrange;run;
+
+
+proc sort data=q75;by ode arrange;run;
+
+
+Data percent(keep= name ode p25p75 arrange) ;
+merge q25 q75;
+by ode arrange;
+p25p75=count25||'-'||count75;
+Name= '25th-75th Prcentile';
+run;
+
+
+data data_median(Keep=var ode value arrange);
+length var$40. value$40.;
+set q50 ;
+var='^_^_^_^_^_^_'||'Median';
+Value=Median;
+arrange=1;
+run;
+
+
+data confidence_i(Keep=var ode value arrange);
+length var$45. value$40.;
+set CI95;
+var='^_^_^_^_^_^_'||'(95% CI)';
+Value=CI;
+arrange=2;
+run;
+
+
+data quartiles(Keep=var ode value arrange);
+length var$50. value$40.;
+set percent;
+var='^_^_^_^_^_^_'||'25th-75th Percentile';
+value=p25p75;
+arrange=3;
+run;
+
+
+data block2_join;
+length var$80. value$40.;
+set data_median confidence_i quartiles;
+
+
+proc sort data=block2_join;by arrange var ode;
+
+
+Proc transpose data=block2_join out=block2_transpose;
+id ode;
+var value;
+by arrange var ;
+run;
+
+
+Data Blocks2(drop=  _name_);
+set block2_transpose;
+rename '1'n=NOAC '2'n=Warfarin '3'n=Aspirin;
+class=2;
+run;
+
+data osjoined;
+set Blocks1 Blocks2;
+run;
+
+title 'Overall Survival Summary';
+Title2 'AF Patients treated with Aspirin, Warfarin or NOAC';
+ods pdf file='/home/u62744457/Task C/os_sum.pdf' style=journal; 
+
+ods escapechar='^';
+
+proc report data=osjoined headline headskip split='|' missing spacing=1 wrap style(header)={just=c}
+style(report)=[rules=group frame=hsides];
+column (class arrange var NOAC  Warfarin  Aspirin);
+define class/ order noprint;
+define arrange / order noprint;
+define var / group ' ' Style(column)=[just=l] style(header)=[just=c];
+define NOAC/ group 'NOAC| (N=194)' style(column)=[just=c] style(header)=[just=c];
+define Warfarin/ group 'Warfarin| (N=28)' style(column)=[just=c] style(header)=[just=c];
+define Aspirin/ group 'Aspirin| (N=60)' style(column)=[just=c] style(header)=[just=c];
+break after class/skip;
+compute before class;
+line ' ';
+endcomp;
+run;
+
+title;
+ods pdf close;
+
+run;
