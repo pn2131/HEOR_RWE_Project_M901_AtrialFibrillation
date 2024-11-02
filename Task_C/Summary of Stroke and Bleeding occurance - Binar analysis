@@ -1,0 +1,231 @@
+data stroke(keep= patient_id stroke1 cohort: )  bleed(keep= patient_id bleeding cohort:) ;
+set b1.cohortdata;
+if strok ne . then stroke1=1;
+else if strok=. then stroke1=2;
+output stroke;
+if bleed ne . then bleeding=1;
+else if bleed=. then bleeding=2;
+output bleed;
+run;
+     
+
+proc sort data=bleed out=bleedsort;
+by cohort1n cohort;
+run;
+
+
+proc sort data=stroke out=strokesort;
+by cohort1n cohort;
+run;
+
+
+proc sql;
+select count(distinct patient_id) into :code1 from strokesort where cohort1n=1;
+select count(distinct patient_id) into :code2 from strokesort where cohort1n=2;
+%put &code1 &code2;
+
+
+/*Create frequency, CI, Chisquare for stroke**/
+ods output onewayfreqs=strokeonefreq BinomialCLs=CLs;
+
+
+proc freq data=strokesort order=formatted;
+by cohort1n;
+tables stroke1/ binomial(exact) nocol norow nocum out=strokeBlock1;
+run;
+
+
+data stroke_freq(Keep= var cohort1n event arrange scl);
+length Var$40. event$10.;
+set work.strokeonefreq;
+if cohort1n=1 and stroke1=1 then do;
+scl=strip(frequency||'/'||put(&code1,3.)||'('||put(percent,4.1)||'%'||')');
+end;
+if cohort1n=2 and stroke1=1 then do;
+scl=strip(frequency||'/'||put(&code2,3.)||'('||put(percent,4.1)||'%'||')');
+end;
+if stroke1=2 then delete;
+Var='Proportion(n/N)';
+arrange=4;
+event='Stroke';
+run;
+
+
+/*CI*/
+data stroke_ci(keep= var arrange cohort1n scl);
+length var$40.;
+set work.CLs;
+LCL=put(LowerCL*100,5.2);
+UCL=put(UpperCL*100,5.2);
+scl='('||put(LCL,5.2)||','||Put(UCL,5.2)||')';
+var='(95% CI)';
+arrange=5;
+run;
+
+/*Chi-sqr*/
+ods output Chisq=Chisqs;
+proc freq data=strokesort order=formatted;
+tables cohort1n* stroke1/CHISQ  fisher nocol norow nocum out=strokeblock2;
+run;
+
+data stroke_Chisq(keep= var arrange NOAC);
+length var$40.;
+set Chisqs;
+if statistic='Chi-Square' then scl=put(prob,6.4);
+else if statistic NE 'Chi-Square' then delete;
+var='Chi-Square P Value';
+rename scl=NOAC;
+arrange=6;
+run;
+
+data stroke_freq_ci;
+set stroke_freq stroke_ci ;
+run;
+ 
+
+proc sort data=stroke_freq_ci;
+by var event arrange;
+      
+      
+
+proc transpose data=stroke_freq_ci out=stroke_transpose;
+id cohort1n;
+var scl;
+by var event arrange;
+run;
+
+
+Data merged_stroke;
+set stroke_transpose;
+rename '1'n=NOAC '2'n='Aspirin+Warfarin'n;
+run;
+
+
+data combined_stroke;
+set merged_stroke stroke_Chisq ;
+class=2;
+run;
+
+
+/*Create frequency, CI, Chisquare for bleed**/
+ods output onewayfreqs=bleedonefreq BinomialCLs=CLb;
+
+
+proc freq data=bleedsort order=formatted;
+by cohort1n;
+tables bleeding/ binomial(exact) nocol norow nocum out=bleedBlock1;
+run;
+
+
+data bleed_freq(Keep= var arrange event cohort1n  scl);
+length Var$40. event$10.;
+set bleedonefreq;
+if cohort1n=1 and bleeding=1 then do;
+scl=strip(frequency||'/'||put(&code1,3.)||'('||put(percent,4.1)||'%'||')');
+end;
+if cohort1n=2 and bleeding=1 then do;
+scl=strip(frequency||'/'||put(&code2,3.)||'('||put(percent,4.1)||'%'||')');
+end;
+if bleeding=2 then delete;
+Var='Proportion(n/N)';
+arrange=1;
+event='Bleed';
+run;
+
+
+data bleed_ci(keep= var arrange cohort1n scl);
+length var$40.;
+set CLb;
+LCL=put(LowerCL*100,5.2);
+UCL=put(UpperCL*100,5.2);
+scl='('||put(LCL,5.2)||','||Put(UCL,5.2)||')';
+var='(95% CI)';
+arrange=2;
+run;
+
+
+ods output Chisq=Chisqb;
+
+proc freq data=bleedsort order=formatted;
+tables cohort1n* bleeding/CHISQ  fisher nocol norow nocum out=bleedblock2;
+run;
+
+
+ods output close;
+data bleed_Chisq(keep= var arrange NOAC);
+length var$40.;
+set Chisqb;
+if statistic='Chi-Square' then scl=put(prob,6.4);
+else if statistic NE 'Chi-Square' then delete;
+var='Chi-Square P Value';
+rename scl=NOAC;
+arrange=3;
+run;
+
+
+data fre_ci_bleed;
+set bleed_freq bleed_ci ;
+rename '1'n=NOAC '2'n=AspirinWarfarin;
+run;
+
+
+proc sort data=fre_ci_bleed;
+by var arrange event;
+
+
+proc transpose data=fre_ci_bleed out=bleed_transpose;
+id cohort1n;
+var scl;
+by  var arrange event;
+run;
+
+
+Data rename_bleed;
+set bleed_transpose;
+rename '1'n=NOAC '2'n='Aspirin+Warfarin'n;
+run;
+
+
+data bleed_combined;
+set rename_bleed bleed_Chisq ;
+class=1;
+run;
+
+
+/*Merging stroke and bleed**/
+data block;
+set bleed_combined combined_stroke;
+run;
+
+
+      
+title ' Summary of Stroke and Bleeding occurance - Binar analysis';
+Title2 'AF Subjects  with Aspirin-Warfarin or NOAC';
+option nodate;
+
+
+
+ods pdf file='/home/u62744457/Task C/sum_of_str.pdf' style=journal; 
+
+
+proc report data=block headline headskip split='|' missing spacing=1 wrap style(header)={just=c}
+style(report)=[rules=group frame=hsides];
+column ( Class arrange event var NOAC  'Aspirin+Warfarin'n );
+define class/ order noprint;
+define arrange/ order noprint;
+define event / group ' ' Style(column)=[just=l] style(header)=[just=c];
+define var / group ' ' Style(column)=[just=l] style(header)=[just=c];
+define NOAC/ group 'NOAC| (N=194)' style(column)=[just=c] style(header)=[just=c];
+define 'Aspirin+Warfarin'n/ group 'Aspirin+Warfarin| (N=88)' style(column)=[just=c] style(header)=[just=c];
+break after class/skip;
+compute before class;
+line ' ';
+endcomp;
+run;
+
+
+title;
+ods pdf close;
+run;
+
+*******************************
