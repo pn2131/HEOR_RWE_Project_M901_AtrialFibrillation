@@ -1,0 +1,129 @@
+%macro vitals(loinc, output, label, orde);
+
+data vital1;
+set b1.vitalanalysis;
+where loinc=&loinc;
+run;
+
+ods output ttests=Ttest statistics=summarys;
+
+proc ttest data=vital1;
+class cohort1n;
+var chg;
+run;
+
+/*statistics*/
+data statistics;
+length means$20. ci$20. min_max$20.;
+set summarys;
+Means=put(mean, 5.2)||'('||put(stdErr, 6.2)||')';
+CI='('||put(LowerCLmean, 7.2)||','||put(UpperCLmean, 7.2)||')';
+min_max='('||put(Minimum, 5.1)||','||put(Maximum, 5.1)||')';
+if method ne '' then delete;
+keep Means CI min_max variable class;
+run;
+
+proc transpose data=statistics out=stat_transpose;
+by variable;
+var means ci min_max;
+id class;
+
+data stat2;
+set stat_transpose;
+rename _name_=var '1'n=NOAC '2'n='Aspirin+Warfarin'n;
+arrange=1;
+
+proc sort data=stat2;
+by var arrange;
+
+/*Ttest p value*/
+data test;
+length var$40. pvalue$15;
+set ttest;
+where variances='Equal';
+var='Ttest P-Value';
+pvalue=put(probt, 6.4);
+arrange=4;
+KEEP variable pvalue var arrange;
+run;
+
+proc transpose data=test out=test1;
+by variable;
+var pvalue;
+by var arrange;
+run;
+
+data test2;
+set test1;
+rename COL1=NOAC;
+run;
+
+proc sort data=stat2;
+by var arrange;
+data &output;
+Length name$40. event$40.;
+set stat2 test2;
+by arrange;
+if var='means' then do;
+name='Mean (SE)';
+arrange=1;
+event=&label;
+end;
+else if var='ci' then do;
+name='95% CI';
+arrange=2;
+end;
+else if var='min_max' then do;
+name='Min, Max';
+arrange=3;
+end;
+else if var='Ttest P-' then do;
+name='Ttest P Value';
+arrange=4;
+end;
+orde=&orde;
+run;
+
+proc sort data=&output;
+by orde arrange var;RUN;
+%mend;
+%vitals(loinc=8867-4, output=heart, label='Heart Rate', orde=1);
+
+data cv_vital;
+set heart sysbp diabp;
+by orde arrange var;
+run;
+
+
+title ' Summary of change in CV from Index date to last available observations';
+ Title2 'AF Subjects  with Aspirin-Warfarin or NOAC';
+ option nodate;
+ods pdf file='/home/u62744457/Task C/sum_of_ch.pdf' style=journal; 
+
+
+ proc report data=cv_vital headline headskip split='|' missing spacing=1 wrap
+style(header)={just=c} style(report)=[rules=group frame=hsides];
+column (orde arrange event name NOAC 'Aspirin+Warfarin'n);
+define orde/ order noprint;
+define arrange/ order noprint;
+define event / Group 'Parameters' Style(column)=[just=l]
+style(header)=[just=c];
+define name / group 'Statistics ' Style(column)=[just=l]
+style(header)=[just=c];
+define NOAC/ group 'NOAC| (N=194)' style(column)=[just=c]
+style(header)=[just=c];
+define 'Aspirin+Warfarin'n/ group 'Aspirin+Warfarin| (N=88)'
+style(column)=[just=c] style(header)=[just=c];
+break after orde/skip;
+compute before orde;
+line ' ';
+endcomp;
+run;
+
+
+
+ title;
+ods pdf close;
+
+
+
